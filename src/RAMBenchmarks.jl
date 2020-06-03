@@ -47,7 +47,7 @@ function write_csv(test::String, solver::String, notes::String, overhead_times::
     else                                                                    
         row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") test solver notes overhead_times... "" runtimes[1] sum([overhead_times..., runtimes...])]
     end
-    file = "/home/ed/Documents/julia_benchmarks/results/"*file
+    file = "/home/ed/Documents/julia_benchmarks/RAMBenchmarks/results/"*file
     new = !isfile(file)
 
     @show file

@@ -1,0 +1,2 @@
+Time,Test,Solver,notes,file load,getting matrices,JuMP build,build (ram only),optimisation,total time
+2020-06-03 15:13:41,HS21,RAM,single-threaded,0.01429891586303711,8.106231689453125e-6,2.09808349609375e-5,,0.0006139278411865234,0.014941930770874023
