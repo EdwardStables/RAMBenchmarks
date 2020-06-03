@@ -1,8 +1,0 @@
-Single threaded RAM I think
-matrices    715.029 002.038
-variables   717.067 000.003
-objective   717.070 078.652
-constraints 795.722 000.590
-optimize    796.312 115.371
-done        911.684 
-
