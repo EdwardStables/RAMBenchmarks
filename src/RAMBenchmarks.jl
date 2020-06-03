@@ -1,5 +1,5 @@
 module RAMBenchmarks
-export run_benchmarks, run_osqp, run_ram, run_ipopt, RAMB
+export run_benchmarks, run_osqp, run_ram, run_ipopt, RAMB, run_range
 
 using RowActionMethods
 using QPSReader
@@ -20,16 +20,25 @@ global valid_problems = ["AUG2D", "AUG2DC", "AUG2DCQP", "AUG2DQP", "AUG3D", "AUG
 						 "LISWET2", "3LISWET3", "LISWET4", "LISWET5", "LISWET6", "LISWET7",
 						 "LISWET8", "LISWET9", "POWELL20", "QPCBLEND", "QPCBOEI1", "QPCBOEI2",
 						 "QPCSTAIR", "YAO.SIF"]
+#known good: HS21, LISWET1, LISWET2
+
+function run_range(f::String, iters::Vector{Int}, threads::Bool)
+    run_osqp(f)
+    run_ipopt(f)
+    for i in iters
+        run_ram(f;iterations=i,threads=threads)
+    end
+end
 
 #TODO sense (pr.objsense)
 run_benchmarks(i::Int) = run_benchmarks(valid_problems[i])
-
-function run_benchmarks(f::String; threads=false)
+function run_benchmarks(f::String; threads::Bool=false, iterations::Int=100)
 	pr = get_problem_file(f)
 	Q,b,c,M,d = get_matrices(pr)
     p = form_problem(Q,b,M,d; threads=threads)
-    Optimize(p, SC_Iterations(100))
+    Optimize(p, SC_Iterations(iterations))
     RAM.Resolve(p)
+    @show p.statistics
     return p
 end
 
@@ -54,12 +63,12 @@ end
 run_osqp(f::String; notes::String="",file::String="results.csv") = run_jump(f, Model(OSQP.Optimizer), "OSQP", notes, file)
 run_ipopt(f::String; notes::String="",file::String="results.csv") = run_jump(f, Model(Ipopt.Optimizer), "IPOPT", notes, file)
 
-function run_ram(f::String; threading::Bool=false, notes::String="", file::String="results.csv", iterations::Int=500)
+function run_ram(f::String; threads::Bool=false, notes::String="", file::String="results.csv", iterations::Int=100)
     p = Model(()->RAM.Optimizer("Hildreth"))
     set_optimizer_attribute(p, "iterations", iterations)
-    set_optimizer_attribute(p, "threading", threading)
+    set_optimizer_attribute(p, "threading", threads)
 
-    combined_notes = threading ? "multi-threaded" : "single-threaded" 
+    combined_notes = threads ? "multi-threaded" : "single-threaded" 
     combined_notes *= "; $(iterations) iterations"
     if notes != ""
         combined_notes *= "; "
@@ -90,9 +99,11 @@ function run_jump(f::String, p, solver, notes, file)
     if solver == "RAM"
         stats = p.moi_backend.optimizer.model.inner_model.statistics
         op_time = [stats.BuildTime, stats.OptimizeTime]
+        @show stats
     else
         op_time = [time() - temp_t]
     end
+    
 
     write_csv(f, solver, notes, times, op_time, objective_value(p); file=file)
 
