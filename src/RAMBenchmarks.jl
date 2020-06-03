@@ -33,15 +33,14 @@ function run_benchmarks(f::String; threads=false)
     return p
 end
 
-function write_csv(test::String, solver::String, notes::String, overhead_times::Vector{T}, runtimes::Vector{T}; file::String = "result.csv") where {T<:Number}
+function write_csv(test::String, solver::String, notes::String, overhead_times::Vector{T}, runtimes::Vector{T}, optimum; file::String = "result.csv") where {T<:Number}
 
-    #nice simple visualisation with `csvlook results.csv | less -S`
 
-    cols = ["Time", "Test", "Solver", "notes", "file load", "getting matrices", "JuMP build", "build (ram only)", "optimisation", "total time"]
+    cols = ["Time", "Test", "Solver", "notes", "file load", "getting matrices", "JuMP build", "build (ram only)", "optimisation", "total time", "optimum value"]
     if solver == "RAM"
-        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") test solver notes overhead_times... runtimes[1] runtimes[2] sum([overhead_times..., runtimes...])]
+        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") test solver notes overhead_times... runtimes[1] runtimes[2] sum([overhead_times..., runtimes...]) optimum]
     else                                                                    
-        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") test solver notes overhead_times... "" runtimes[1] sum([overhead_times..., runtimes...])]
+        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") test solver notes overhead_times... "" runtimes[1] sum([overhead_times..., runtimes...]) optimum]
     end
     file = "/home/ed/Documents/julia_benchmarks/RAMBenchmarks/results/"*file
     new = !isfile(file)
@@ -61,8 +60,9 @@ function run_ram(f::String; threading::Bool=false, notes::String="", file::Strin
     set_optimizer_attribute(p, "threading", threading)
 
     combined_notes = threading ? "multi-threaded" : "single-threaded" 
+    combined_notes *= "; $(iterations) iterations"
     if notes != ""
-        combined_notes *= ", "
+        combined_notes *= "; "
         combined_notes *= notes
     end
 
@@ -94,7 +94,7 @@ function run_jump(f::String, p, solver, notes, file)
         op_time = [time() - temp_t]
     end
 
-    write_csv(f, solver, notes, times, op_time, file=file)
+    write_csv(f, solver, notes, times, op_time, objective_value(p); file=file)
 
     return p, x
 end
