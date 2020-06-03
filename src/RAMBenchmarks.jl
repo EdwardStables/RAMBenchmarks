@@ -7,6 +7,9 @@ using SparseArrays
 using JuMP
 using OSQP
 using Ipopt
+using CSV
+using Tables
+using Dates
 
 const RAMB = RAMBenchmarks
 
@@ -34,38 +37,71 @@ function run_benchmarks(f::String; threads=false)
     return p
 end
 
-run_osqp(f::String) = run_jump(f, Model(OSQP.Optimizer))
-run_ipopt(f::String) = run_jump(f, Model(Ipopt.Optimizer))
+function write_csv(test::String, solver::String, notes::String, overhead_times::Vector{T}, runtimes::Vector{T}; file::String = "result.csv") where {T<:Number}
 
-function run_ram(f::String)
+    #nice simple visualisation with `csvlook results.csv | less -S`
+
+    cols = ["Time", "Test", "Solver", "notes", "file load", "getting matrices", "JuMP build", "build (ram only)", "optimisation", "total time"]
+    if false #solver == "RAM"
+        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") test solver notes overhead_times... runtimes[1] runtimes[2] sum([overhead_times..., runtimes...])]
+    else                                                                    
+        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") test solver notes overhead_times... "" runtimes[1] sum([overhead_times..., runtimes...])]
+    end
+    file = "/home/ed/Documents/julia_benchmarks/results/"*file
+    new = !isfile(file)
+
+    @show file
+    @show new
+
+    open(file, new ? "w" : "a") do f
+        CSV.write(f, Tables.table(row), header=cols, append=!new)
+    end
+
+end
+
+run_osqp(f::String; notes::String="",file::String="results.csv") = run_jump(f, Model(OSQP.Optimizer), "OSQP", notes, file)
+run_ipopt(f::String; notes::String="",file::String="results.csv") = run_jump(f, Model(Ipopt.Optimizer), "IPOPT", notes, file)
+
+function run_ram(f::String; threading::Bool=false, notes::String="", file::String="results.csv")
     p = Model(()->RAM.Optimizer("Hildreth"))
     set_optimizer_attribute(p, "iterations", 500)
     set_optimizer_attribute(p, "threading", true)
-    #run_jump(f, p)
+
+    combined_notes = threading ? "multi-threaded" : "single-threaded" 
+    if notes != ""
+        combined_notes *= ", "
+        combined_notes *= notes
+    end
+
+    run_jump(f, p, "RAM", combined_notes, file)
 end
 
-function run_jump(f::String, p)
-    println("$(time()) file load")
+function run_jump(f::String, p, solver, notes, file)
+    times = Vector{Float64}(); temp_t = time()
+
     pr = get_problem_file(f)
-    println("$(time()) matrices")
+    push!(times, time() - temp_t); temp_t = time()
+
 	Q,b,c,M,d = get_matrices(pr)
     set_silent(p)
-    println("$(time()) variables")
+    push!(times, time() - temp_t); temp_t = time()
     @variable(p, x[1:pr.nvar])
-    println("$(time()) objective")
     @objective(p, Min, 0.5sum(x[i]Q[i,j]x[j] for i=1:pr.nvar,j=1:pr.nvar) + sum(x[i]b[i] for i=1:pr.nvar))
-    println("$(time()) constraints")
     for c in 1:pr.ncon
         @constraint(p, sum(x[i]M[c,i] for i=1:pr.nvar) <= d[c])
     end
-    println("$(time()) optimize")
+    push!(times, time() - temp_t); temp_t = time()
+
     optimize!(p)
-    println("$(time()) done")
+    op_time = time() - temp_t
+
+    write_csv(f, solver, notes, times, [op_time], file=file)
+
     return p, x
 end
 
 
-function get_problem_file(name::String; path::String="/home/ed/Documents/university/year4/FYP/Benchmarking/CUTEst/marosmeszaros",ext::String=".SIF")
+function get_problem_file(name::String; path::String="/home/ed/Documents/julia_benchmarks/CUTEst/marosmeszaros",ext::String=".SIF")
     problem_path = joinpath(path, name) * ext
     return readqps(problem_path)
 end
