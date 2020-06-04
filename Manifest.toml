@@ -27,6 +27,12 @@ git-tree-sha1 = "3663bfffede2ef41358b6fc2e1d8a6d50b3c3904"
 uuid = "6e34b625-4abd-537c-b88f-471c36dfa7a0"
 version = "1.0.6+2"
 
+[[COSMO]]
+deps = ["LinearAlgebra", "MathOptInterface", "Printf", "Random", "SparseArrays", "Statistics", "SuiteSparse", "Test", "UnsafeArrays"]
+git-tree-sha1 = "9cf0af4ad5f3cb17471a2f6e79cccb370ce0370c"
+uuid = "1e616198-aa4e-51ec-90a2-23f7fbd31d8d"
+version = "0.4.1"
+
 [[CSV]]
 deps = ["CategoricalArrays", "DataFrames", "Dates", "FilePathsBase", "Mmap", "Parsers", "PooledArrays", "Tables", "Unicode", "WeakRefStrings"]
 git-tree-sha1 = "52a8e60c7822f53d57e4403b7f2811e7e1bdd32b"
@@ -333,9 +339,9 @@ version = "0.2.0"
 
 [[RowActionMethods]]
 deps = ["BenchmarkTools", "DataStructures", "JuMP", "LinearAlgebra", "Logging", "MathOptInterface", "SparseArrays", "SuiteSparse"]
-git-tree-sha1 = "8e89f8e2676c14a3d60dab6f39369466c0f3773a"
-repo-rev = "code_optimisation"
-repo-url = "../../RowActionMethods.jl"
+git-tree-sha1 = "6e9ab261902aa33c77558a3209d274fb9f54da3e"
+repo-rev = "threading"
+repo-url = "../RowActionMethods.jl"
 uuid = "8996f5da-76e3-43de-86da-5c0241bb3374"
 version = "0.1.0"
 
@@ -410,6 +416,11 @@ uuid = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 
 [[Unicode]]
 uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
+
+[[UnsafeArrays]]
+git-tree-sha1 = "417100df8567333bff1b851008b1441a2be08da0"
+uuid = "c4a57d5a-5b31-53a6-b365-19f8c011fbd6"
+version = "0.4.0"
 
 [[WeakRefStrings]]
 deps = ["DataAPI", "Random", "Test"]
