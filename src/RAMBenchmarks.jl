@@ -15,21 +15,20 @@ using Dates
 const RAMB = RAMBenchmarks
 
 global valid_problems = ["AUG2D", "AUG2DC", "AUG2DCQP", "AUG2DQP", "AUG3D", "AUG3DC",
-						 "AUG3DCQP", "AUG3DQP", "BOYD1", "CONT-050", "CONT-100", "CONT-101",
-						 "CONT-200", "CONT-201", "CONT-300", "HS118", "HS21", "HUES-MOD",
-						 "HUESTIS", "KSIP", "LISWET1", "LISWET10", "LISWET11", "LISWET12",
-						 "LISWET2", "3LISWET3", "LISWET4", "LISWET5", "LISWET6", "LISWET7",
-						 "LISWET8", "LISWET9", "POWELL20", "QPCBLEND", "QPCBOEI1", "QPCBOEI2",
-						 "QPCSTAIR", "YAO"]
+			 "AUG3DCQP", "AUG3DQP", "BOYD1", "CONT-050", "CONT-100", "CONT-101",
+			 "CONT-200", "CONT-201", "CONT-300", "HS118", "HS21", "HUES-MOD",
+			 "HUESTIS", "KSIP", "LISWET1", "LISWET10", "LISWET11", "LISWET12",
+			 "LISWET2", "3LISWET3", "LISWET4", "LISWET5", "LISWET6", "LISWET7",
+			 "LISWET8", "LISWET9", "POWELL20", "QPCBLEND", "QPCBOEI1", "QPCBOEI2",
+			 "QPCSTAIR", "YAO"]
+
 #known good: HS21, HS118, , LISWET1, LISWET2, AUG2DC, 
 #poor performance: CONT-100
 #running problems: AUG2D,
 
-function run_range(f::String, iters::Vector{Int}, threads::Bool)
-    #run_osqp(f)
-    #run_ipopt(f)
+function run_range(f::String, iters::Vector{Int}, threads::Bool; out_file="results.csv")
     for i in iters
-        run_ram(f;iterations=i,threads=threads, write=true)
+        run_ram(f;iterations=i,threads=threads, file=out_file, write=true)
     end
 end
 
@@ -45,16 +44,16 @@ function run_benchmarks(f::String; threads::Bool=false, iterations::Int=100)
     return p
 end
 
-function write_csv(test::String, solver::String, notes::String, overhead_times::Vector{T}, runtimes::Vector{T}, optimum; file::String = "result.csv") where {T<:Number}
+function write_csv(test::String, solver::String, config::Vector, notes::String, overhead_times::Vector{T}, runtimes::Vector{T}, optimum; file::String = "result.csv") where {T<:Number}
 
 
-    cols = ["Time", "Test", "Solver", "notes", "file load", "getting matrices", "JuMP build", "build (ram only)", "optimisation", "total time", "optimum value"]
+    cols = ["Time", "Test", "Solver", "Threading", "Threads", "Iterations", "Notes", "File Load", "Matrix Load", "JuMP build", "Build (RAM only)", "Optimisation", "Total", "Optimum Value"]
     if solver == "RAM"
-        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") test solver notes overhead_times... runtimes[1] runtimes[2] sum([overhead_times..., runtimes...]) optimum]
+        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") test solver config... notes overhead_times... runtimes[1] runtimes[2] sum([overhead_times..., runtimes...]) optimum]
     else                                                                    
-        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") test solver notes overhead_times... "" runtimes[1] sum([overhead_times..., runtimes...]) optimum]
+        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") test solver "" "" "" notes overhead_times... "" runtimes[1] sum([overhead_times..., runtimes...]) optimum]
     end
-    file = "/home/ed/Documents/julia_benchmarks/RAMBenchmarks/results/"*file
+    file = "/home/eps116/FYP_Benchmarking/RAMBenchmarks/results/"*file
     new = !isfile(file)
 
     open(file, new ? "w" : "a") do f
@@ -63,26 +62,21 @@ function write_csv(test::String, solver::String, notes::String, overhead_times::
 
 end
 
-run_osqp(f::String; notes::String="",file::String="results.csv", write=false) = run_jump(f, Model(OSQP.Optimizer), "OSQP", notes, file, write)
-run_cosmo(f::String; notes::String="",file::String="results.csv", write=false) = run_jump(f, Model(COSMO.Optimizer), "COSMO", notes, file, write)
-run_ipopt(f::String; notes::String="",file::String="results.csv", write=false) = run_jump(f, Model(Ipopt.Optimizer), "IPOPT", notes, file, write)
+run_osqp(f::String; notes::String="",file::String="results.csv", write=false) = run_jump(f, Model(OSQP.Optimizer), "OSQP", [], notes, file, write)
+run_cosmo(f::String; notes::String="",file::String="results.csv", write=false) = run_jump(f, Model(COSMO.Optimizer), "COSMO", [], notes, file, write)
+run_ipopt(f::String; notes::String="",file::String="results.csv", write=false) = run_jump(f, Model(Ipopt.Optimizer), "IPOPT",[],  notes, file, write)
 
 function run_ram(f::String; threads::Bool=false, notes::String="", file::String="results.csv", iterations::Int=100, write=false)
     p = Model(()->RAM.Optimizer("Hildreth"))
     set_optimizer_attribute(p, "iterations", iterations)
     set_optimizer_attribute(p, "threading", threads)
 
-    combined_notes = threads ? "multi-threaded" : "single-threaded" 
-    combined_notes *= "; $(iterations) iterations"
-    if notes != ""
-        combined_notes *= "; "
-        combined_notes *= notes
-    end
+    config = [threads ? "multi-threaded" : "single-threaded", Base.Threads.nthreads(), iterations]
 
-    run_jump(f, p, "RAM", combined_notes, file, write)
+    run_jump(f, p, "RAM", config, notes, file, write)
 end
 
-function run_jump(f::String, p, solver, notes, file, write)
+function run_jump(f::String, p, solver, config, notes, file, write)
     times = Vector{Float64}(); temp_t = time()
 
     pr = get_problem_file(f)
@@ -114,14 +108,14 @@ function run_jump(f::String, p, solver, notes, file, write)
     
 
     if write
-        write_csv(f, solver, notes, times, op_time, objective_value(p); file=file)
+        write_csv(f, solver, config, notes, times, op_time, objective_value(p); file=file)
     end
 
     return p, x
 end
 
 
-function get_problem_file(name::String; path::String="/home/ed/Documents/julia_benchmarks/CUTEst/marosmeszaros",ext::String=".SIF")
+function get_problem_file(name::String; path::String="/home/eps116/FYP_Benchmarking/problems/marosmeszaros",ext::String=".SIF")
     problem_path = joinpath(path, name) * ext
     return readqps(problem_path)
 end

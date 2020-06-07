@@ -1,10 +1,11 @@
 #!/bin/bash
 {
-for filename in ~/Documents/julia_benchmarks/RAMBenchmarks/results/*.csv
+for filename in ./*.csv
 do
     printf ${filename}
     printf "\n"
-    csvlook ${filename} -I
+    #csvlook ${filename} -I
+    column -s, -t ${filename}
     printf "\n"
 done
 } | less -S
