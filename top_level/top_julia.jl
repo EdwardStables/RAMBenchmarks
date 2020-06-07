@@ -5,13 +5,15 @@ function main(args)
     rng = rng[1]:rng[2]:rng[3]
 
     threads = args[4] == "threaded"
+    comp = args[5] == "comp"
 
     isfile(args[end-1]) || error("file")
     in_file = args[end-1] 
     out_file = args[end] 
 
     #warm up the compiler
-    run_ram("HS21")
+    bm = Benchmark("HS21", threads)
+    run_ram_range(bm, [rng...], false)
     
 
     tests = []
@@ -23,7 +25,14 @@ function main(args)
     end
 
     for test in tests
-        run_range(test, [rng...], threads; out_file=out_file)
+        bm = Benchmark(test, threads, out_file=out_file)
+        if comp
+            run_OSQP(bm, true)
+            #run_COSMO(bm, true)
+            run_Ipopt(bm, true)
+        else
+            run_ram_range(bm, [rng...], true)
+        end
     end
 end
 
