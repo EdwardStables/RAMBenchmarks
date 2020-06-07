@@ -1,5 +1,6 @@
 module RAMBenchmarks
-export run_benchmarks, run_osqp, run_cosmo,run_ram, run_ipopt, RAMB, run_range
+
+export Benchmark, run_ram_range, run_OSQP, run_COSMO, run_Ipopt
 
 using RowActionMethods
 using QPSReader
@@ -12,48 +13,129 @@ using CSV
 using Tables
 using Dates
 
-const RAMB = RAMBenchmarks
-
-global valid_problems = ["AUG2D", "AUG2DC", "AUG2DCQP", "AUG2DQP", "AUG3D", "AUG3DC",
+const valid_problems = ["AUG2D", "AUG2DC", "AUG2DCQP", "AUG2DQP", "AUG3D", "AUG3DC",
 			 "AUG3DCQP", "AUG3DQP", "BOYD1", "CONT-050", "CONT-100", "CONT-101",
 			 "CONT-200", "CONT-201", "CONT-300", "HS118", "HS21", "HUES-MOD",
 			 "HUESTIS", "KSIP", "LISWET1", "LISWET10", "LISWET11", "LISWET12",
 			 "LISWET2", "3LISWET3", "LISWET4", "LISWET5", "LISWET6", "LISWET7",
 			 "LISWET8", "LISWET9", "POWELL20", "QPCBLEND", "QPCBOEI1", "QPCBOEI2",
-			 "QPCSTAIR", "YAO"]
+             "QPCSTAIR", "YAO"]
 
 #known good: HS21, HS118, , LISWET1, LISWET2, AUG2DC, 
 #poor performance: CONT-100
 #running problems: AUG2D,
 
-function run_range(f::String, iters::Vector{Int}, threads::Bool; out_file="results.csv")
-    for i in iters
-        run_ram(f;iterations=i,threads=threads, file=out_file, write=true)
+mutable struct Benchmark
+    file::String
+
+    base_problem::Model
+    active_problem::Model
+
+    jump_time::Float64
+
+
+    #Stores the details of the last run
+    build_time::Float64
+    optimisation_time::Float64
+    iterations::Int
+
+    solver::String
+    optimum::Float64
+
+    threading::Bool
+    threads::Int
+
+    write_file::String
+    notes::String
+
+    function Benchmark(test::String, threading::Bool; out_file="results.csv", notes="")
+        b = new()
+
+        b.file = test
+        b.threading = threading
+        b.threads = Base.Threads.nthreads()
+        b.write_file = out_file
+        b.notes = notes
+
+        t1 = time()
+        b.base_problem = build_jump(test)
+        b.jump_time = time() - t1
+
+        return b
     end
 end
 
-#TODO sense (pr.objsense)
-run_benchmarks(i::Int) = run_benchmarks(valid_problems[i])
-function run_benchmarks(f::String; threads::Bool=false, iterations::Int=100)
-	pr = get_problem_file(f)
-	Q,b,c,M,d = get_matrices(pr)
-    p = form_problem(Q,b,M,d; threads=threads)
-    Optimize(p, SC_Iterations(iterations))
-    RAM.Resolve(p)
-    @show p.statistics
-    return p
+function run_ram_range(bm::Benchmark, iterations::Vector{Int}, write::Bool)
+    for i in iterations
+        bm.iterations = i
+        bm.solver = "RAM"
+        bm.active_problem = copy(bm.base_problem)
+        
+        set_optimizer(bm.active_problem, ()->RAM.Optimizer("Hildreth"))
+        optimize!(bm.active_problem)
+
+        bm.build_time = bm.active_problem.moi_backend.optimizer.model.inner_model.statistics.BuildTime
+        bm.optimisation_time = bm.active_problem.moi_backend.optimizer.model.inner_model.statistics.OptimizeTime
+        bm.optimum = objective_value(bm.active_problem)
+
+        if write
+            write_csv(bm)
+        end
+    end
 end
 
-function write_csv(test::String, solver::String, config::Vector, notes::String, overhead_times::Vector{T}, runtimes::Vector{T}, optimum; file::String = "result.csv") where {T<:Number}
+function run_OSQP(bm::Benchmark, write::Bool)
+    bm.solver = "OSQP"
+    bm.active_problem = copy(bm.base_problem)
+    set_optimizer(bm.active_problem, OSQP.Optimizer)
+    run_non_ram(bm, write)
+end
 
+function run_COSMO(bm::Benchmark, write::Bool)
+    bm.solver = "COSMO"
+    bm.active_problem = copy(bm.base_problem)
+    set_optimizer(bm.active_problem, COSMO.Optimizer)
+    run_non_ram(bm, write)
+end
 
-    cols = ["Time", "Test", "Solver", "Threading", "Threads", "Iterations", "Notes", "File Load", "Matrix Load", "JuMP build", "Build (RAM only)", "Optimisation", "Total", "Optimum Value"]
-    if solver == "RAM"
-        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") test solver config... notes overhead_times... runtimes[1] runtimes[2] sum([overhead_times..., runtimes...]) optimum]
-    else                                                                    
-        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") test solver "" "" "" notes overhead_times... "" runtimes[1] sum([overhead_times..., runtimes...]) optimum]
+function run_Ipopt(bm::Benchmark, write::Bool)
+    bm.solver = "Ipopt"
+    bm.active_problem = copy(bm.base_problem)
+    set_optimizer(bm.active_problem, Ipopt.Optimizer)
+    run_non_ram(bm, write)
+end
+
+function run_non_ram(bm::Benchmark, write::Bool)
+    bm.iterations = 0  
+
+    t1 = time()
+    optimize!(bm.active_problem)
+
+    bm.optimisation_time = time() - t1
+    bm.build_time = 0.0
+    bm.optimum = objective_value(bm.active_problem)
+
+    if write
+        write_csv(bm)
     end
-    file = "/home/eps116/FYP_Benchmarking/RAMBenchmarks/results/"*file
+end
+
+function write_csv(bm::Benchmark)
+    cols = ["Time", "Test", "Solver", "Threading", "Threads", "Iterations", "Notes", 
+            "JuMP build", "Build (RAM only)", "Optimisation", "Total", "Optimum Value"]
+
+    if bm.solver == "RAM"
+        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") bm.file bm.solver bm.threading bm.threads #=
+               =# bm.iterations bm.notes bm.jump_time bm.build_time bm.optimisation_time #=
+               =# sum([bm.jump_time, bm.build_time, bm.optimisation_time]) bm.optimum]
+    else
+        row = [Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS") bm.file bm.solver "" "" "" #=
+               =# bm.notes bm.jump_time "" bm.optimisation_time #=
+               =# sum([bm.jump_time, bm.build_time, bm.optimisation_time]) bm.optimum]
+    end
+
+
+    file = "/home/eps116/FYP_Benchmarking/RAMBenchmarks/results/"*bm.write_file
     new = !isfile(file)
 
     open(file, new ? "w" : "a") do f
@@ -62,60 +144,22 @@ function write_csv(test::String, solver::String, config::Vector, notes::String, 
 
 end
 
-run_osqp(f::String; notes::String="",file::String="results.csv", write=false) = run_jump(f, Model(OSQP.Optimizer), "OSQP", [], notes, file, write)
-run_cosmo(f::String; notes::String="",file::String="results.csv", write=false) = run_jump(f, Model(COSMO.Optimizer), "COSMO", [], notes, file, write)
-run_ipopt(f::String; notes::String="",file::String="results.csv", write=false) = run_jump(f, Model(Ipopt.Optimizer), "IPOPT",[],  notes, file, write)
-
-function run_ram(f::String; threads::Bool=false, notes::String="", file::String="results.csv", iterations::Int=100, write=false)
-    p = Model(()->RAM.Optimizer("Hildreth"))
-    set_optimizer_attribute(p, "iterations", iterations)
-    set_optimizer_attribute(p, "threading", threads)
-
-    config = [threads ? "multi-threaded" : "single-threaded", Base.Threads.nthreads(), iterations]
-
-    run_jump(f, p, "RAM", config, notes, file, write)
-end
-
-function run_jump(f::String, p, solver, config, notes, file, write)
-    times = Vector{Float64}(); temp_t = time()
-
+function build_jump(f::String)
     pr = get_problem_file(f)
-    push!(times, time() - temp_t); temp_t = time()
-
 	Q,b,c,M,d = get_matrices(pr)
-    try
-        set_silent(p)
-    catch 
-        println("Can't set silent")
-    end
-    push!(times, time() - temp_t); temp_t = time()
+    p = Model()
     @variable(p, x[1:pr.nvar])
-    @objective(p, Min, 0.5sum(x[i]Q[i,j]x[j] for i=1:pr.nvar,j=1:pr.nvar) + sum(x[i]b[i] for i=1:pr.nvar))
+    expr = 0.5sum(x[i]Q[i,j]x[j] for i=1:pr.nvar,j=1:pr.nvar) + sum(x[i]b[i] for i=1:pr.nvar)
+    @objective(p, Min, expr)
     for c in 1:pr.ncon
         @constraint(p, sum(x[i]M[c,i] for i=1:pr.nvar) <= d[c])
     end
-    push!(times, time() - temp_t); temp_t = time()
-
-    optimize!(p)
-
-    if solver == "RAM"
-        stats = p.moi_backend.optimizer.model.inner_model.statistics
-        op_time = [stats.BuildTime, stats.OptimizeTime]
-        @show stats
-    else
-        op_time = [time() - temp_t]
-    end
-    
-
-    if write
-        write_csv(f, solver, config, notes, times, op_time, objective_value(p); file=file)
-    end
-
-    return p, x
+    return p
 end
 
-
-function get_problem_file(name::String; path::String="/home/eps116/FYP_Benchmarking/problems/marosmeszaros",ext::String=".SIF")
+function get_problem_file(name::String; 
+                          path::String="/home/eps116/FYP_Benchmarking/problems/marosmeszaros",
+                          ext::String=".SIF")
     problem_path = joinpath(path, name) * ext
     return readqps(problem_path)
 end
@@ -153,14 +197,4 @@ function get_matrices(pr::QPSData)
     return Q, b, c, M, d	
 end
 
-function form_problem(Q, b, M, d; method::String="Hildreth", threads=false)
-    p = GetModel("Hildreth")
-    SetThreads(p, threads=threads)
-    Setup(p, Matrix(Q), b)
-    for (i,l) in enumerate(d)
-        AddConstraint(p, M[i,:], l)
-    end
-    return p
 end
-end
-
