@@ -13,6 +13,10 @@ using CSV
 using Tables
 using Dates
 
+println("RAMB finished initialising")
+
+const ROOT = "/home/eps116/FYP_Benchmarking/RAM/"
+
 const valid_problems = ["AUG2D", "AUG2DC", "AUG2DCQP", "AUG2DQP", "AUG3D", "AUG3DC",
 			 "AUG3DCQP", "AUG3DQP", "BOYD1", "CONT-050", "CONT-100", "CONT-101",
 			 "CONT-200", "CONT-201", "CONT-300", "HS118", "HS21", "HUES-MOD",
@@ -51,6 +55,7 @@ mutable struct Benchmark
     function Benchmark(test::String, threading::Bool; out_file="results.csv", notes="")
         b = new()
 
+        println("Benchmarking $test")
         b.file = test
         b.threading = threading
         b.threads = Base.Threads.nthreads()
@@ -58,7 +63,9 @@ mutable struct Benchmark
         b.notes = notes
 
         t1 = time()
+        println("Starting Build"); t1 = time()
         b.base_problem = build_jump(test)
+        println("Build Done ($(time() - t1)s)")
         b.jump_time = time() - t1
 
         return b
@@ -67,9 +74,21 @@ end
 
 function run_ram_range(bm::Benchmark, iterations::Vector{Int}, write::Bool)
     for i in iterations
+        println("Iteration $i")
         bm.iterations = i
         bm.solver = "RAM"
+        println("Copying"); t1 = time()
         bm.active_problem = copy(bm.base_problem)
+        println("Copying Done ($(time() - t1)s)")
+
+        try
+            set_silent(bm.active_problem)
+        catch 
+            println("Can't set silent")
+        end
+
+        set_optimizer_attribute(bm.active_problem, "iterations", bm.iterations)
+        set_optimizer_attribute(bm.active_problem, "threading", bm.threading)
         
         set_optimizer(bm.active_problem, ()->RAM.Optimizer("Hildreth"))
         optimize!(bm.active_problem)
@@ -108,8 +127,15 @@ end
 function run_non_ram(bm::Benchmark, write::Bool)
     bm.iterations = 0  
 
+    try
+        set_silent(bm.active_problem)
+    catch 
+        println("Can't set silent")
+    end
+
     t1 = time()
     optimize!(bm.active_problem)
+
 
     bm.optimisation_time = time() - t1
     bm.build_time = 0.0
@@ -135,7 +161,7 @@ function write_csv(bm::Benchmark)
     end
 
 
-    file = "/home/eps116/FYP_Benchmarking/RAMBenchmarks/results/"*bm.write_file
+    file = ROOT*"/RAMBenchmarks/results/"*bm.write_file
     new = !isfile(file)
 
     open(file, new ? "w" : "a") do f
@@ -145,20 +171,28 @@ function write_csv(bm::Benchmark)
 end
 
 function build_jump(f::String)
+    t1 = time()
     pr = get_problem_file(f)
+    println("    Loaded File ($(time() - t1)s)");t1 = time()
 	Q,b,c,M,d = get_matrices(pr)
+    println("    Formed Matrices ($(time() - t1)s)");t1 = time()
     p = Model()
     @variable(p, x[1:pr.nvar])
-    expr = 0.5sum(x[i]Q[i,j]x[j] for i=1:pr.nvar,j=1:pr.nvar) + sum(x[i]b[i] for i=1:pr.nvar)
-    @objective(p, Min, expr)
+    println("    Set Variables ($(time() - t1)s)");t1 = time()
+
+    #0.5sum(x[i]Q[i,j]x[j] for i=1:pr.nvar,j=1:pr.nvar) + sum(x[i]b[i] for i=1:pr.nvar)
+    @objective(p, Min, 0.5x'*Q*x + x'b)
+    println("    Built Objective ($(time() - t1)s)");t1 = time()
+
     for c in 1:pr.ncon
         @constraint(p, sum(x[i]M[c,i] for i=1:pr.nvar) <= d[c])
     end
+    println("    Set Constraints ($(time() - t1)s)")
     return p
 end
 
 function get_problem_file(name::String; 
-                          path::String="/home/eps116/FYP_Benchmarking/problems/marosmeszaros",
+                          path::String=ROOT*"/problems/marosmeszaros",
                           ext::String=".SIF")
     problem_path = joinpath(path, name) * ext
     return readqps(problem_path)

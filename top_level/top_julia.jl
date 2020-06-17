@@ -11,10 +11,24 @@ function main(args)
     in_file = args[end-1] 
     out_file = args[end] 
 
+    println("Running tests...")
+    println("Threads are $threads")
+    println("Running comp tests are $comp")
+    println("Input file is $in_file")
+    println("Writing to $out_file")
+    println("Running iteration range $rng\n")
+ 
+
+    println("Running warmup test...")
     #warm up the compiler
     bm = Benchmark("HS21", threads)
-    run_ram_range(bm, [rng...], false)
-    
+
+    run_ram_range(bm, [10], false)
+    run_OSQP(bm, false)
+    #run_COSMO(bm, true)
+    run_Ipopt(bm, false)
+
+    println("Warmup done")
 
     tests = []
 
@@ -36,4 +50,5 @@ function main(args)
     end
 end
 
+println("Starting benchmarking...")
 main(ARGS)
