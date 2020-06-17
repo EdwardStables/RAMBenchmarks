@@ -1,6 +1,6 @@
 #!/bin/bash
 {
-for filename in ./*.{csv,txt}
+for filename in ./*.csv
 do
     printf ${filename}
     printf "\n"

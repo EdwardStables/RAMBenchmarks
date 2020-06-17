@@ -23,11 +23,13 @@ function main(args)
     #warm up the compiler
     bm = Benchmark("HS21", threads)
 
-    run_ram_range(bm, [10], false)
-    run_OSQP(bm, false)
-    #run_COSMO(bm, true)
-    run_Ipopt(bm, false)
-
+    if comp
+        run_OSQP(bm, false)
+        #run_COSMO(bm, true)
+        run_Ipopt(bm, false)
+    else
+        run_ram_range(bm, [10], false)
+    end
     println("Warmup done")
 
     tests = []
